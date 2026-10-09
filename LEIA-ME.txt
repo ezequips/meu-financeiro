@@ -1,0 +1,5 @@
+MEU FINANCEIRO — INSTALAÇÃO ANDROID
+Publique TODOS os arquivos na raiz de um site HTTPS.
+Abra o endereço HTTPS no Chrome Android.
+Antes de instalar, use Config. > Backup dos seus dados > Importar backup e selecione seu arquivo JSON.
+Confira saldos e lançamentos. Não apague a versão antiga nem o backup até confirmar.
