@@ -3,7 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#173d32">
+<meta name="theme-color" content="#6f4e37">
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="./icon-192.png">
 <title>Meu Financeiro</title>
 <style>
 :root{--green:#6f4e37;--green2:#8b6548;--bg:#f5efe6;--card:#fffdf9;--muted:#71675e;--red:#a94438;--line:#e3d8cb;--in-bg:#dce8d9;--in-text:#254b2c;--out-bg:#f2dcd7;--out-text:#762e25;--pay-bg:#eadfcf;--pay-text:#5d4026;--receive-bg:#e7e1d8;--receive-text:#4b4843;--ink:#2d2925;--soft:#f0e6d9}
@@ -403,6 +406,10 @@ document.querySelectorAll('[data-movement-tab]').forEach(btn=>btn.addEventListen
   });
 }));
 applyTheme();render();
+</script>
+
+<script>
+if ("serviceWorker" in navigator) { window.addEventListener("load", function () { navigator.serviceWorker.register("./service-worker.js").catch(function (err) { console.error("Falha ao registrar service worker", err); }); }); }
 </script>
 </body>
 </html>
