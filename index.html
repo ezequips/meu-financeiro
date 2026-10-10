@@ -1,8 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta name="theme-color" content="#146c5a">
-<link rel="manifest" href="manifest.json">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#173d32">
@@ -41,7 +39,7 @@ input:focus,select:focus{outline:2px solid #9fc9ad;border-color:var(--green2)}.t
 </head>
 <body>
 <header>
-  <h1>Meu Financeiro</h1><p>Controle pessoal, barbearia e oficina</p>
+  <h1>Meu Financeiro</h1><p>Controle financeiro</p>
   <div class="eyebrow">SALDO CONSOLIDADO</div><div class="total" id="grandTotal">R$ 0,00</div>
   <div class="stats">
     <div class="stat"><small>Entradas</small><strong id="headerIn">R$ 0,00</strong></div>
@@ -123,9 +121,26 @@ input:focus,select:focus{outline:2px solid #9fc9ad;border-color:var(--green2)}.t
     </div>
     
     
+    <div class="card" id="reportsCard"><h2>Relatórios financeiros</h2>
+      <p class="muted">Gere um relatório com detalhes dos lançamentos por área e um fechamento consolidado do período.</p>
+      <label for="reportPeriod">Período do relatório</label><select id="reportPeriod"><option value="month">Mensal</option><option value="year">Anual</option><option value="custom">Personalizado</option></select>
+      <div id="reportMonthFields"><label for="reportMonth">Mês</label><input id="reportMonth" type="month"></div>
+      <div id="reportYearFields" class="hidden"><label for="reportYear">Ano</label><input id="reportYear" type="number" min="2000" max="2100"></div>
+      <div id="reportCustomFields" class="hidden"><label for="reportStart">Data inicial</label><input id="reportStart" type="date"><label for="reportEnd">Data final</label><input id="reportEnd" type="date"></div>
+      <div class="actions"><button id="generateReport">Gerar relatório</button></div>
+      <div id="reportPreview" style="margin-top:12px"></div>
+      <div id="reportExportActions" class="actions hidden"><button id="exportReportPdf">Exportar PDF / Imprimir</button><button class="secondary" id="exportReportImage">Salvar imagem</button></div>
+      <p class="muted">No Android, a opção PDF abre a impressão do navegador; escolha “Salvar como PDF”. A imagem é baixada como PNG.</p>
+    </div>
     <div class="card"><h2>Resumo por área</h2><div id="dataSummary"></div></div>
   </section>
-  <section id="page-config" class="hidden"><div class="card"><h2>Aparência do aplicativo</h2><p class="muted">Escolha um tema. As cores de entradas, saídas, contas a pagar e contas a receber foram ajustadas para manter os números legíveis.</p><div id="themeChoices" class="theme-grid"></div><div id="themeDescription" class="theme-note"></div></div></section>
+  <section id="page-config" class="hidden">
+    <div class="card"><h2>Áreas financeiras</h2><p class="muted">Escolha quantas áreas deseja usar e personalize os nomes. Os lançamentos antigos serão preservados.</p>
+      <div id="areaSettings"></div><div class="actions"><button id="saveAreaSettings">Salvar áreas e nomes</button></div>
+      <div class="note" style="margin-top:10px">Desativar uma área apenas a oculta das telas principais e dos novos lançamentos; os dados antigos ficam guardados e podem voltar a aparecer se reativar a área.</div>
+    </div>
+    <div class="card"><h2>Aparência do aplicativo</h2><p class="muted">Escolha um tema. As cores de entradas, saídas, contas a pagar e contas a receber foram ajustadas para manter os números legíveis.</p><div id="themeChoices" class="theme-grid"></div><div id="themeDescription" class="theme-note"></div></div>
+  </section>
   <section id="page-historico" class="hidden">
     <div class="card"><h2>Histórico completo</h2><label for="historyFilter">Filtrar área</label><select id="historyFilter"><option>Todas</option><option>Uso pessoal</option><option>Barbearia</option><option>Oficina de afiação</option></select><div id="historyList"></div></div>
   </section>
@@ -143,8 +158,27 @@ input:focus,select:focus{outline:2px solid #9fc9ad;border-color:var(--green2)}.t
 <script>
 const KEY='meuFinanceiro_v1';
 const areas=['Uso pessoal','Barbearia','Oficina de afiação'];
-const defaultState={balances:{'Uso pessoal':0,'Barbearia':0,'Oficina de afiação':0},transactions:[],bills:[],theme:'cappuccino',areaIcons:{'Uso pessoal':'👤','Barbearia':'💈','Oficina de afiação':'🛠️'}};
+const defaultState={balances:{'Uso pessoal':0,'Barbearia':0,'Oficina de afiação':0},transactions:[],bills:[],theme:'cappuccino',areaIcons:{'Uso pessoal':'👤','Barbearia':'💈','Oficina de afiação':'🛠️'},areaNames:{'Uso pessoal':'Uso pessoal','Barbearia':'Barbearia','Oficina de afiação':'Oficina de afiação'},enabledAreas:['Uso pessoal','Barbearia','Oficina de afiação']};
 let state=loadState(),txType='Entrada';
+if(!state.areaNames)state.areaNames={'Uso pessoal':'Uso pessoal','Barbearia':'Barbearia','Oficina de afiação':'Oficina de afiação'};
+if(!Array.isArray(state.enabledAreas))state.enabledAreas=[...areas];
+function enabledAreas(){return areas.filter(a=>state.enabledAreas.includes(a))}
+function areaLabel(a){return (state.areaNames&&state.areaNames[a])||a}
+function syncAreaSelects(){
+  const visible=enabledAreas();
+  [['txArea',true],['billArea',true],['historyFilter',false]].forEach(([id,includeAll])=>{
+    const el=document.getElementById(id);if(!el)return;const old=el.value;
+    const opts=(includeAll?['Todas']:[]).concat(visible);
+    el.innerHTML=opts.map(a=>`<option value="${esc(a)}">${a==='Todas'?'Todas':esc(areaLabel(a))}</option>`).join('');
+    el.value=opts.includes(old)?old:(includeAll?'Todas':(visible[0]||areas[0]));
+  });
+}
+function renderAreaSettings(){
+ const el=document.getElementById('areaSettings');
+ el.innerHTML=areas.map((a,i)=>`<div class="card" style="margin:10px 0;padding:12px;box-shadow:none"><label style="display:flex;align-items:center;gap:9px;margin:0 0 8px"><input type="checkbox" data-area-enabled="${esc(a)}" style="width:auto" ${state.enabledAreas.includes(a)?'checked':''}> Usar esta área</label><label for="area-name-${i}">Nome da área</label><input id="area-name-${i}" data-area-name="${esc(a)}" maxlength="35" value="${esc(areaLabel(a))}"></div>`).join('');
+}
+function areaTotalsList(){return enabledAreas().map(a=>({area:a,...totals(a)}))}
+
 
 const areaIconOptions={
   'Uso pessoal':[
@@ -176,10 +210,8 @@ document.getElementById('iconPickerModal').addEventListener('click',e=>{if(e.tar
 
 if(!state.theme)state.theme='cappuccino';
 const categories={
-' Uso pessoal':[],
-' Uso pessoal|Entrada':['Salário e rendimentos','Reembolso','Outros recebimentos'],
+'Uso pessoal|Entrada':['Salário','Salário e rendimentos','Reembolso','Outros recebimentos'],
 'Uso pessoal|Saída':['Casa','Mercado','Lazer','Saúde','Moradia','Alimentação','Transporte','Cartão e dívidas','Compras','Outros'],
-' Uso pessoal|Saída':['Casa','Mercado','Lazer','Saúde','Moradia','Alimentação','Transporte','Cartão e dívidas','Compras','Outros'],
 'Barbearia|Entrada':['Cortes e barba','Produtos vendidos','Outros recebimentos'],
 'Barbearia|Saída':['Aluguel','Energia e água','Materiais','Equipamentos','Manutenção','Marketing','Impostos e taxas','Outros'],
 'Oficina de afiação|Entrada':['Afiação de alicates','Afiação de tesouras','Afiação de facas','Venda de alicates','Venda de tesouras','Venda de facas','Outros recebimentos'],
@@ -205,7 +237,7 @@ function money(n){return (Number(n)||0).toLocaleString('pt-BR',{style:'currency'
 function parseMoney(v){return Number(String(v).trim().replace(/\s/g,'').replace(/\./g,'').replace(',','.'))}
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function totals(area){const ts=state.transactions.filter(t=>t.area===area);return {in:ts.filter(t=>t.type==='Entrada').reduce((a,t)=>a+t.amount,0),out:ts.filter(t=>t.type==='Saída').reduce((a,t)=>a+t.amount,0),balance:(Number(state.balances[area])||0)+ts.reduce((a,t)=>a+(t.type==='Entrada'?t.amount:-t.amount),0)}}
-function allTotals(){return areas.map(totals)}
+function allTotals(){return enabledAreas().map(totals)}
 function setPage(page){document.querySelectorAll('main section').forEach(s=>s.classList.add('hidden'));document.getElementById('page-'+page).classList.remove('hidden');document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===page));render()}
 document.querySelectorAll('.nav button').forEach(b=>b.addEventListener('click',()=>setPage(b.dataset.page)));
 document.querySelectorAll('[data-type]').forEach(b=>b.addEventListener('click',()=>{txType=b.dataset.type;document.querySelectorAll('[data-type]').forEach(x=>x.classList.toggle('chosen',x===b));fillCategories()}));
@@ -217,6 +249,13 @@ document.getElementById('billRepeat').addEventListener('change',()=>{document.ge
 document.getElementById('saveBill').onclick=()=>{const type=document.getElementById('billType').value,area=document.getElementById('billArea').value,description=document.getElementById('billDesc').value.trim(),amount=parseMoney(document.getElementById('billAmount').value),due=document.getElementById('billDue').value,repeat=document.getElementById('billRepeat').value,intervalDays=Number(document.getElementById('billIntervalDays').value),skipSaturday=document.getElementById('skipSaturday').checked,skipSunday=document.getElementById('skipSunday').checked,skipHolidays=document.getElementById('skipHolidays').checked;if(!description||!Number.isFinite(amount)||amount<=0||!due){alert('Preencha descrição, valor válido e vencimento.');return}if(repeat==='interval'&&(!Number.isInteger(intervalDays)||intervalDays<1||intervalDays>365)){alert('Informe um intervalo entre 1 e 365 dias.');return}state.bills.push({id:crypto.randomUUID?crypto.randomUUID():String(Date.now()),type,area,description,amount,due,repeat,intervalDays:repeat==='interval'?intervalDays:null,skipSaturday:repeat==='interval'&&skipSaturday,skipSunday:repeat==='interval'&&skipSunday,skipHolidays:repeat==='interval'&&skipHolidays,done:false});document.getElementById('billDesc').value='';document.getElementById('billAmount').value='';document.getElementById('billRepeat').value='none';document.getElementById('billIntervalOptions').style.display='none';document.getElementById('skipSaturday').checked=false;document.getElementById('skipSunday').checked=false;document.getElementById('skipHolidays').checked=false;save()};
 document.getElementById('goBalances').onclick=()=>setPage('dados');document.getElementById('goHistory').onclick=()=>setPage('historico');
 document.getElementById('saveBalances').onclick=()=>{const vals=[['Uso pessoal','balPersonal'],['Barbearia','balBarber'],['Oficina de afiação','balWorkshop']];for(const [a,id] of vals){const raw=document.getElementById(id).value;const v=raw.trim()===''?0:parseMoney(raw);if(!Number.isFinite(v)){alert('Confira os valores dos saldos.');return}state.balances[a]=v}save();alert('Saldos iniciais salvos.')};
+document.getElementById('saveAreaSettings').onclick=()=>{
+ const selected=[...document.querySelectorAll('[data-area-enabled]')].filter(x=>x.checked).map(x=>x.dataset.areaEnabled);
+ if(!selected.length){alert('Mantenha pelo menos uma área ativa.');return;}
+ const names={};for(const a of areas){const input=[...document.querySelectorAll('[data-area-name]')].find(x=>x.dataset.areaName===a);const value=(input?.value||'').trim();if(!value){alert('Informe um nome para cada área.');return;}if(names[ value.toLocaleLowerCase('pt-BR') ]){alert('Use nomes diferentes para cada área.');return;}names[value.toLocaleLowerCase('pt-BR')]=true;}
+ state.enabledAreas=selected;state.areaNames={};for(const a of areas){state.areaNames[a]=[...document.querySelectorAll('[data-area-name]')].find(x=>x.dataset.areaName===a).value.trim();}
+ syncAreaSelects();fillCategories();save();renderAreaSettings();alert('Áreas e nomes atualizados.');
+};
 function removeTx(id){if(confirm('Excluir esta movimentação?')){state.transactions=state.transactions.filter(t=>t.id!==id);save()}}
 function easterSunday(year){
   const a=year%19,b=Math.floor(year/100),c=year%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),month=Math.floor((h+l-7*m+114)/31),day=((h+l-7*m+114)%31)+1;
@@ -260,7 +299,7 @@ function markBill(id){
   save();
 }
 function deleteBill(id){if(confirm('Excluir esta conta?')){state.bills=state.bills.filter(b=>b.id!==id);state.transactions=state.transactions.filter(t=>t.billId!==id);save()}}
-function txHtml(t,withDelete=true){return `<div class="tx"><div class="areaicon">${t.type==='Entrada'?'↙':'↗'}</div><div class="txmain"><strong>${esc(t.description)}</strong><small>${esc(t.area)} · ${esc(t.category||'Contas')} · ${esc(t.date)}</small></div><div class="txamt ${t.type==='Entrada'?'green':'red'}">${t.type==='Entrada'?'+':'−'}${money(t.amount)}${withDelete?`<br><button class="danger" style="padding:5px 7px;font-size:11px;margin-top:5px" onclick="removeTx('${t.id}')">Excluir</button>`:''}</div></div>`}
+function txHtml(t,withDelete=true){return `<div class="tx"><div class="areaicon">${t.type==='Entrada'?'↙':'↗'}</div><div class="txmain"><strong>${esc(t.description)}</strong><small>${esc(areaLabel(t.area))} · ${esc(t.category||'Contas')} · ${esc(t.date)}</small></div><div class="txamt ${t.type==='Entrada'?'green':'red'}">${t.type==='Entrada'?'+':'−'}${money(t.amount)}${withDelete?`<br><button class="danger" style="padding:5px 7px;font-size:11px;margin-top:5px" onclick="removeTx('${t.id}')">Excluir</button>`:''}</div></div>`}
 function initChartYear(){const el=document.getElementById('chartYear');if(!el.options.length){const y=new Date().getFullYear();for(let yr=y-4;yr<=y+1;yr++)el.add(new Option(String(yr),String(yr)));el.value=String(y);el.addEventListener('change',renderChart);}}
 function renderChart(){const year=Number(document.getElementById('chartYear').value)||new Date().getFullYear(),months=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];const sums=months.map((m,i)=>{const ts=state.transactions.filter(t=>{const d=String(t.date||'');return d.startsWith(year+'-')&&Number(d.slice(5,7))===i+1});return {credit:ts.filter(t=>t.type==='Entrada').reduce((a,t)=>a+t.amount,0),debit:ts.filter(t=>t.type==='Saída').reduce((a,t)=>a+t.amount,0)}});const max=Math.max(1,...sums.flatMap(x=>[x.credit,x.debit]));document.getElementById('annualChart').innerHTML='<div class="chart-wrap"><div class="year-chart">'+sums.map((x,i)=>'<div class="month-col"><div class="bars"><div class="bar credit" style="height:'+Math.max(x.credit?3:0,x.credit/max*100)+'%" title="Crédito '+months[i]+': '+money(x.credit)+'"></div><div class="bar debit" style="height:'+Math.max(x.debit?3:0,x.debit/max*100)+'%" title="Débito '+months[i]+': '+money(x.debit)+'"></div></div><div class="month-label">'+months[i]+'</div></div>').join('')+'</div></div><div class="chart-legend"><span><i class="legend-dot" style="background:var(--in-text)"></i>Crédito: '+money(sums.reduce((a,x)=>a+x.credit,0))+'</span><span><i class="legend-dot" style="background:var(--out-text)"></i>Débito: '+money(sums.reduce((a,x)=>a+x.debit,0))+'</span></div>';}
 function initWeeklyChart(){
@@ -298,12 +337,12 @@ function renderWeeklyChart(){
 }
 function renderThemes(){const el=document.getElementById('themeChoices');el.innerHTML=Object.entries(themes).map(([id,t])=>'<button type="button" class="theme-choice '+(state.theme===id?'selected':'')+'" data-theme="'+id+'"><strong>'+t.name+'</strong><div class="swatches">'+[t.vars.green,t.vars.inBg,t.vars.outBg,t.vars.payBg,t.vars.receiveBg].map(c=>'<i class="swatch" style="background:'+c+'"></i>').join('')+'</div></button>').join('');el.querySelectorAll('[data-theme]').forEach(b=>b.addEventListener('click',()=>{state.theme=b.dataset.theme;applyTheme();save();renderThemes();document.getElementById('themeDescription').textContent=themes[state.theme].description;}));document.getElementById('themeDescription').textContent=(themes[state.theme]||themes.cappuccino).description;}
 function render(){
- const all=allTotals(),inSum=state.transactions.filter(t=>t.type==='Entrada').reduce((s,t)=>s+t.amount,0),outSum=state.transactions.filter(t=>t.type==='Saída').reduce((s,t)=>s+t.amount,0);applyTheme();
+ syncAreaSelects();renderAreaSettings();const all=allTotals(),visibleSet=new Set(enabledAreas()),inSum=state.transactions.filter(t=>visibleSet.has(t.area)&&t.type==='Entrada').reduce((s,t)=>s+t.amount,0),outSum=state.transactions.filter(t=>visibleSet.has(t.area)&&t.type==='Saída').reduce((s,t)=>s+t.amount,0);applyTheme();
  document.getElementById('grandTotal').textContent=money(all.reduce((s,t)=>s+t.balance,0));document.getElementById('headerIn').textContent=money(inSum);document.getElementById('headerOut').textContent=money(outSum);
- document.getElementById('headerPay').textContent=money(state.bills.filter(b=>!b.done&&b.type==='Pagar').reduce((s,b)=>s+b.amount,0));document.getElementById('headerReceive').textContent=money(state.bills.filter(b=>!b.done&&b.type==='Receber').reduce((s,b)=>s+b.amount,0));
- document.getElementById('areaCards').innerHTML=areas.map((a,i)=>{const t=all[i],defaults=['👤','💈','🛠️'],ico=(state.areaIcons&&state.areaIcons[a])||defaults[i],colors=['#ff4d6d','#00a8e8','#ff8c00'];return `<div class="card" style="margin:12px 0 0;box-shadow:none"><div class="row"><div class="areahead"><button type="button" class="areaicon icon-change" style="background:${colors[i]};color:#fff" aria-label="Trocar ícone de ${a}" title="Toque para trocar o ícone" onclick="openIconPicker('${a}')">${ico}</button><div><h3>${a}</h3><span class="muted">Saldo atual</span></div></div><strong class="${t.balance<0?'red':'green'}">${money(t.balance)}</strong></div><div class="row" style="font-size:12px;margin-top:13px"><span>Entradas <b class="green">${money(t.in)}</b></span><span>Saídas <b class="red">${money(t.out)}</b></span></div></div>`}).join('');
+ document.getElementById('headerPay').textContent=money(state.bills.filter(b=>visibleSet.has(b.area)&&!b.done&&b.type==='Pagar').reduce((s,b)=>s+b.amount,0));document.getElementById('headerReceive').textContent=money(state.bills.filter(b=>visibleSet.has(b.area)&&!b.done&&b.type==='Receber').reduce((s,b)=>s+b.amount,0));
+ document.getElementById('areaCards').innerHTML=enabledAreas().map((a,i)=>{const t=totals(a),idx=areas.indexOf(a),defaults=['👤','💈','🛠️'],ico=(state.areaIcons&&state.areaIcons[a])||defaults[idx],colors=['#ff4d6d','#00a8e8','#ff8c00'],label=areaLabel(a);return `<div class="card" style="margin:12px 0 0;box-shadow:none"><div class="row"><div class="areahead"><button type="button" class="areaicon icon-change" style="background:${colors[idx]};color:#fff" aria-label="Trocar ícone de ${esc(label)}" title="Toque para trocar o ícone" onclick="openIconPicker('${a}')">${ico}</button><div><h3>${esc(label)}</h3><span class="muted">Saldo atual</span></div></div><strong class="${t.balance<0?'red':'green'}">${money(t.balance)}</strong></div><div class="row" style="font-size:12px;margin-top:13px"><span>Entradas <b class="green">${money(t.in)}</b></span><span>Saídas <b class="red">${money(t.out)}</b></span></div></div>`}).join('');
  const recent=state.transactions.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5);document.getElementById('recent').innerHTML=recent.length?recent.map(t=>txHtml(t,false)).join(''):'<div class="empty">Ainda não há movimentações registradas.</div>';
- const billAreas = ['Uso pessoal', 'Barbearia', 'Oficina de afiação'];
+ const billAreas = enabledAreas();
 const billRows = state.bills.slice().sort((a, b) => (a.due || '').localeCompare(b.due || ''));
 const billGroups = [
   { key: 'pendingPay', title: 'A pagar', test: b => b.type === 'Pagar' && !b.done },
@@ -311,12 +350,8 @@ const billGroups = [
   { key: 'pendingReceive', title: 'A receber', test: b => b.type === 'Receber' && !b.done },
   { key: 'received', title: 'Recebidas', test: b => b.type === 'Receber' && b.done }
 ];
-const billAreaButtons = [
-  { name: 'Uso pessoal', id: 'uso-pessoal', color: '#2878d0' },
-  { name: 'Barbearia', id: 'barbearia', color: '#16845b' },
-  { name: 'Oficina de afiação', id: 'oficina-de-afiacao', color: '#a45b16' }
-];
-const billButtonsHtml = `<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:8px 0 14px">${billAreaButtons.map((a,i)=>`<button type="button" class="bill-area-button" style="opacity:${i===0 ? 1 : 0.72};background:${a.color};color:#fff;border:0;border-radius:12px;padding:12px 6px;min-height:52px;font-weight:700;line-height:1.2" onclick="document.querySelectorAll('.bill-area-panel').forEach(p=>p.style.display='none');document.querySelectorAll('.bill-area-button').forEach(b=>b.style.opacity='.72');document.getElementById('bill-area-${a.id}').style.display='block';this.style.opacity='1'">${a.name}</button>`).join('')}</div>`;
+const billAreaButtons = billAreas.map(area=>({name:area,id:areas.indexOf(area)===0?'uso-pessoal':areas.indexOf(area)===1?'barbearia':'oficina-de-afiacao',label:areaLabel(area),color:['#2878d0','#16845b','#a45b16'][areas.indexOf(area)]}));
+const billButtonsHtml = `<div style="display:grid;grid-template-columns:repeat(${Math.max(1,billAreaButtons.length)},minmax(0,1fr));gap:8px;margin:8px 0 14px">${billAreaButtons.map((a,i)=>`<button type="button" class="bill-area-button" style="opacity:${i===0 ? 1 : 0.72};background:${a.color};color:#fff;border:0;border-radius:12px;padding:12px 6px;min-height:52px;font-weight:700;line-height:1.2" onclick="document.querySelectorAll('.bill-area-panel').forEach(p=>p.style.display='none');document.querySelectorAll('.bill-area-button').forEach(b=>b.style.opacity='.72');document.getElementById('bill-area-${a.id}').style.display='block';this.style.opacity='1'">${esc(a.label)}</button>`).join('')}</div>`;
 const billPanelsHtml = billAreas.map(area => {
   const areaMeta = billAreaButtons.find(a => a.name === area);
   const areaBills = billRows.filter(b => (b.area || 'Uso pessoal') === area);
@@ -333,19 +368,29 @@ const billPanelsHtml = billAreas.map(area => {
     </div>`).join('');
     return `<div class="subhead" style="margin:12px 0 5px">${group.title} <span class="muted">(${items.length})</span></div>${cards || '<div class="muted" style="padding:3px 0 6px">Nenhuma conta nesta seção.</div>'}`;
   }).join('');
-  const isFirst = area === 'Uso pessoal';
-  return `<div class="card bill-area-panel" id="bill-area-${areaMeta.id}" style="margin:0 0 12px;box-shadow:none;display:${isFirst ? 'block' : 'none'}"><h3>${area}</h3>${sections}</div>`;
+  const isFirst = area === billAreas[0];
+  return `<div class="card bill-area-panel" id="bill-area-${areaMeta.id}" style="margin:0 0 12px;box-shadow:none;display:${isFirst ? 'block' : 'none'}"><h3>${esc(areaLabel(area))}</h3>${sections}</div>`;
 }).join('');
 document.getElementById('billList').innerHTML = billButtonsHtml + billPanelsHtml;
 if (!state.bills.length) document.getElementById('billList').innerHTML = billButtonsHtml + '<div class="empty">Nenhuma conta cadastrada. Escolha uma área acima para começar.</div>';
- document.getElementById('balPersonal').value=state.balances['Uso pessoal']??0;document.getElementById('balBarber').value=state.balances['Barbearia']??0;document.getElementById('balWorkshop').value=state.balances['Oficina de afiação']??0;
- document.getElementById('dataSummary').innerHTML=areas.map((a,i)=>`<div class="row" style="padding:9px 0;border-bottom:1px solid var(--line)"><span>${a}</span><strong>${money(all[i].balance)}</strong></div>`).join('');initChartYear();renderChart();initWeeklyChart();renderWeeklyChart();renderThemes();
+ document.querySelector('label[for="balPersonal"]').textContent=areaLabel('Uso pessoal')+' (R$)';document.querySelector('label[for="balBarber"]').textContent=areaLabel('Barbearia')+' (R$)';document.querySelector('label[for="balWorkshop"]').textContent=areaLabel('Oficina de afiação')+' (R$)';document.getElementById('balPersonal').value=state.balances['Uso pessoal']??0;document.getElementById('balBarber').value=state.balances['Barbearia']??0;document.getElementById('balWorkshop').value=state.balances['Oficina de afiação']??0;
+ document.getElementById('dataSummary').innerHTML=enabledAreas().map(a=>`<div class="row" style="padding:9px 0;border-bottom:1px solid var(--line)"><span>${esc(areaLabel(a))}</span><strong>${money(totals(a).balance)}</strong></div>`).join('');initChartYear();renderChart();initWeeklyChart();renderWeeklyChart();renderThemes();
  const filter=document.getElementById('historyFilter')?.value||'Todas',list=state.transactions.slice().sort((a,b)=>b.date.localeCompare(a.date)).filter(t=>filter==='Todas'||t.area===filter);document.getElementById('historyList').innerHTML=list.map(t=>txHtml(t)).join('')||'<div class="empty">Nenhum lançamento encontrado.</div>';
 }
 document.getElementById('historyFilter').addEventListener('change',render);
+let currentReport=null;
+function reportRange(){const mode=document.getElementById('reportPeriod').value;let start,end;if(mode==='month'){const v=document.getElementById('reportMonth').value;if(!v)return null;start=v+'-01';const [y,m]=v.split('-').map(Number);end=new Date(y,m,0).toISOString().slice(0,10);}else if(mode==='year'){const y=Number(document.getElementById('reportYear').value);if(!y||y<2000||y>2100)return null;start=`${y}-01-01`;end=`${y}-12-31`;}else{start=document.getElementById('reportStart').value;end=document.getElementById('reportEnd').value;if(!start||!end||start>end)return null;}return {start,end};}
+function buildReport(){const range=reportRange();if(!range){alert('Informe um período válido para o relatório.');return;}const txs=state.transactions.filter(t=>t.date>=range.start&&t.date<=range.end).slice().sort((a,b)=>a.date.localeCompare(b.date));const sections=enabledAreas().map(area=>{const list=txs.filter(t=>t.area===area);const ins=list.filter(t=>t.type==='Entrada').reduce((s,t)=>s+t.amount,0),outs=list.filter(t=>t.type==='Saída').reduce((s,t)=>s+t.amount,0);return {area,label:areaLabel(area),list,ins,outs,net:ins-outs};});const allIn=sections.reduce((s,x)=>s+x.ins,0),allOut=sections.reduce((s,x)=>s+x.outs,0);currentReport={...range,sections,allIn,allOut,net:allIn-allOut,txs};
+ const fmt=d=>d.split('-').reverse().join('/');let html=`<div class="card"><h3>Relatório financeiro</h3><p class="muted">Período: ${fmt(range.start)} a ${fmt(range.end)}</p>`;for(const sec of sections){html+=`<div style="border-top:1px solid var(--line);padding-top:10px;margin-top:12px"><h3>${esc(sec.label)}</h3><div class="row"><span>Entradas</span><strong class="green">${money(sec.ins)}</strong></div><div class="row"><span>Saídas</span><strong class="red">${money(sec.outs)}</strong></div><div class="row"><span>Resultado do período</span><strong>${money(sec.net)}</strong></div>`;html+=sec.list.length?'<div style="margin-top:8px">'+sec.list.map(t=>`<div style="padding:7px 0;border-top:1px dashed var(--line);font-size:12px"><strong>${esc(t.date.split('-').reverse().join('/'))} · ${esc(t.description)}</strong><br>${esc(t.type)} · ${esc(t.category||'Sem categoria')} · ${money(t.amount)}</div>`).join('')+'</div>':'<p class="muted">Nenhum lançamento no período.</p>';html+='</div>';}
+ html+=`<div style="border-top:2px solid var(--green);padding-top:12px;margin-top:14px"><h3>Fechamento final consolidado</h3><div class="row"><span>Total de entradas</span><strong class="green">${money(allIn)}</strong></div><div class="row"><span>Total de saídas</span><strong class="red">${money(allOut)}</strong></div><div class="row"><strong>Saldo líquido do período</strong><strong>${money(allIn-allOut)}</strong></div><p class="muted">Total de lançamentos: ${txs.length}</p></div></div>`;document.getElementById('reportPreview').innerHTML=html;document.getElementById('reportExportActions').classList.remove('hidden');}
+document.getElementById('reportPeriod').addEventListener('change',()=>{const m=document.getElementById('reportPeriod').value;document.getElementById('reportMonthFields').classList.toggle('hidden',m!=='month');document.getElementById('reportYearFields').classList.toggle('hidden',m!=='year');document.getElementById('reportCustomFields').classList.toggle('hidden',m!=='custom');});
+const now=new Date();document.getElementById('reportMonth').value=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;document.getElementById('reportYear').value=now.getFullYear();document.getElementById('reportStart').value=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;document.getElementById('reportEnd').value=now.toISOString().slice(0,10);
+document.getElementById('generateReport').onclick=buildReport;
+document.getElementById('exportReportPdf').onclick=()=>{if(!currentReport){alert('Gere o relatório primeiro.');return;}const body=document.getElementById('reportPreview').innerHTML;const w=window.open('','_blank');if(!w){alert('O navegador bloqueou a janela do relatório. Permita pop-ups e tente novamente.');return;}w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório Meu Financeiro</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#222;max-width:850px;margin:auto}h3{margin-bottom:8px} .row{display:flex;justify-content:space-between;padding:5px 0;gap:15px}.muted{color:#666;font-size:12px}.green{color:#17633c}.red{color:#9b2828}.card{border:1px solid #ddd;border-radius:12px;padding:16px}@media print{button{display:none}}</style></head><body><h1>Meu Financeiro — Relatório</h1>${body}<script>window.onload=()=>setTimeout(()=>window.print(),350)<\/script></body></html>`);w.document.close();};
+document.getElementById('exportReportImage').onclick=()=>{if(!currentReport){alert('Gere o relatório primeiro.');return;}const r=currentReport,lines=[];lines.push('MEU FINANCEIRO — RELATÓRIO',`Período: ${r.start.split('-').reverse().join('/')} a ${r.end.split('-').reverse().join('/')}`,'');for(const sec of r.sections){lines.push(sec.label.toUpperCase(),`Entradas: ${money(sec.ins)}`,`Saídas: ${money(sec.outs)}`,`Resultado: ${money(sec.net)}`);if(sec.list.length)for(const t of sec.list)lines.push(`${t.date.split('-').reverse().join('/')} | ${t.description} | ${t.type} | ${t.category||'Sem categoria'} | ${money(t.amount)}`);else lines.push('Nenhum lançamento no período.');lines.push('');}lines.push('FECHAMENTO FINAL CONSOLIDADO',`Total de entradas: ${money(r.allIn)}`,`Total de saídas: ${money(r.allOut)}`,`Saldo líquido do período: ${money(r.net)}`,`Total de lançamentos: ${r.txs.length}`);const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d'),width=1000,lineH=30,pad=48;ctx.font='20px Arial';const wrapped=[];for(const line of lines){if(line.length>70&&ctx.measureText(line).width>width-pad*2){let current='';for(const word of line.split(' ')){if(ctx.measureText(current+' '+word).width>width-pad*2){wrapped.push(current);current=word;}else current+=(current?' ':'')+word;}if(current)wrapped.push(current);}else wrapped.push(line);}canvas.width=width;canvas.height=pad*2+wrapped.length*lineH;ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#222';ctx.font='20px Arial';let y=pad;for(const line of wrapped){if(line==='MEU FINANCEIRO — RELATÓRIO'||line==='FECHAMENTO FINAL CONSOLIDADO'){ctx.font='bold 24px Arial';}else if(line===line.toUpperCase()&&line.trim()){ctx.font='bold 21px Arial';}else ctx.font='20px Arial';ctx.fillText(line, pad,y);y+=lineH;}canvas.toBlob(blob=>{const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`relatorio-meu-financeiro-${r.start}-a-${r.end}.png`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);},'image/png');};
 document.getElementById('exportData').onclick=()=>{const blob=new Blob([JSON.stringify({app:'Meu Financeiro',version:2,exportedAt:new Date().toISOString(),...state},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='backup-meu-financeiro.json';a.click();URL.revokeObjectURL(url)};
 document.getElementById('importButton').onclick=()=>document.getElementById('importFile').click();
-document.getElementById('importFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const obj=JSON.parse(await f.text());if(!obj.balances||!Array.isArray(obj.transactions)||!Array.isArray(obj.bills))throw new Error();if(!confirm('Importar este backup e substituir os dados atuais? Exporte uma cópia dos dados atuais antes de continuar.'))return;state={balances:obj.balances,transactions:obj.transactions,bills:obj.bills,theme:obj.theme||'cappuccino'};applyTheme();save();alert('Backup importado.')}catch(err){alert('Arquivo de backup inválido.')}e.target.value=''};
+document.getElementById('importFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const obj=JSON.parse(await f.text());if(!obj.balances||!Array.isArray(obj.transactions)||!Array.isArray(obj.bills))throw new Error();if(!confirm('Importar este backup e substituir os dados atuais? Exporte uma cópia dos dados atuais antes de continuar.'))return;state={...structuredClone(defaultState),...obj,balances:obj.balances,transactions:obj.transactions,bills:obj.bills,theme:obj.theme||'cappuccino',areaNames:obj.areaNames||structuredClone(defaultState.areaNames),enabledAreas:Array.isArray(obj.enabledAreas)?obj.enabledAreas:[...areas]};applyTheme();save();alert('Backup importado.')}catch(err){alert('Arquivo de backup inválido.')}e.target.value=''};
 document.getElementById('clearData').onclick=()=>{if(confirm('Tem certeza? Todos os lançamentos, contas e saldos deste navegador serão apagados. Exporte um backup antes.')){state=structuredClone(defaultState);save();setPage('painel')}};
 document.querySelectorAll('[data-movement-tab]').forEach(btn=>btn.addEventListener('click',()=>{
   const mode=btn.dataset.movementTab;
@@ -358,11 +403,6 @@ document.querySelectorAll('[data-movement-tab]').forEach(btn=>btn.addEventListen
   });
 }));
 applyTheme();render();
-</script>
-<script>
-if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
- window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(()=>{}));
-}
 </script>
 </body>
 </html>
